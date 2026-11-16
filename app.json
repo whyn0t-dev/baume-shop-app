@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Baume Shop",
+    "slug": "baume-shop-app",
+    "scheme": "baume-shop",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "runtimeVersion": { "policy": "appVersion" },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.baume.shop",
+      "infoPlist": { "ITSAppUsesNonExemptEncryption": false }
+    },
+    "android": {
+      "package": "com.baume.shop",
+      "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#3D2A2A" }
+    },
+    "plugins": [
+      "expo-font",
+      "expo-web-browser",
+      ["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 220, "resizeMode": "contain", "backgroundColor": "#3D2A2A" }],
+      "expo-asset",
+      "expo-status-bar"
+    ]
+  }
+}
