@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { Category, CheckoutSession, CheckoutStatus, Loyalty, Order, Product, ProductImage, User, Variant } from "./types";
+import type { Category, ChatMessage, CheckoutSession, CheckoutStatus, Conversation, Loyalty, Order, Product, ProductImage, User, Variant } from "./types";
 
 const arr = <T,>(data: any): T[] => (Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : []);
 
@@ -131,4 +131,34 @@ export async function createCheckout(payload: CheckoutPayload) {
 export async function fetchCheckoutStatus(sessionId: string) {
 	const res = await api.get(`/checkout/status/${sessionId}`);
 	return res.data as CheckoutStatus;
+}
+
+// ── Messagerie avec l'équipe Baume (même système que la bulle du site) ─────
+export async function fetchConversations() {
+	const res = await api.get("/conversations/mine");
+	return arr<Conversation>(res.data);
+}
+
+export async function startConversation(content: string) {
+	const res = await api.post("/conversations", { content });
+	return res.data as Conversation;
+}
+
+export async function fetchMessages(conversationId: string) {
+	const res = await api.get(`/conversations/${conversationId}/messages`);
+	return arr<ChatMessage>(res.data);
+}
+
+export async function sendMessage(conversationId: string, content: string) {
+	const res = await api.post(`/conversations/${conversationId}/messages`, { content });
+	return res.data as ChatMessage;
+}
+
+export async function setTyping(conversationId: string, typing: boolean) {
+	await api.patch(`/conversations/${conversationId}/typing`, { role: typing ? "customer" : null });
+}
+
+export async function fetchUnreadCount() {
+	const res = await api.get("/conversations/unread-count");
+	return Number(res.data?.unread || 0);
 }

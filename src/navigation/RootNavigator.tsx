@@ -25,6 +25,7 @@ import ReturnRequestScreen from "../screens/ReturnRequestScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import FavoritesScreen from "../screens/FavoritesScreen";
+import ChatScreen from "../screens/ChatScreen";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -86,6 +87,7 @@ export default function RootNavigator() {
 			<Stack.Screen name="Settings" component={SettingsScreen} />
 			<Stack.Screen name="Profile" component={ProfileScreen} />
 			<Stack.Screen name="Favorites" component={FavoritesScreen} />
+			<Stack.Screen name="Chat" component={ChatScreen} />
 		</Stack.Navigator>
 	);
 }

@@ -6,7 +6,7 @@ import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { SITE_URL } from "../api/client";
-import { fetchLoyalty, fetchMyOrders } from "../api/endpoints";
+import { fetchLoyalty, fetchMyOrders, fetchUnreadCount } from "../api/endpoints";
 import type { Order } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { useFavorites } from "../store/FavoritesProvider";
@@ -23,12 +23,14 @@ export default function AccountScreen({ navigation }: Props) {
 	const fav = useFavorites();
 	const [orders, setOrders] = useState<Order[] | null>(null);
 	const [points, setPoints] = useState<number | null>(null);
+	const [unread, setUnread] = useState(0);
 
 	useFocusEffect(
 		useCallback(() => {
 			if (!user) return;
 			fetchMyOrders().then(setOrders).catch(() => {});
 			fetchLoyalty().then((l) => setPoints(l.points)).catch(() => {});
+			fetchUnreadCount().then(setUnread).catch(() => {});
 		}, [user]),
 	);
 
@@ -45,6 +47,7 @@ export default function AccountScreen({ navigation }: Props) {
 						<SectionLabel>Baume</SectionLabel>
 						<Card>
 							<ListRow first icon="heart-outline" label="Mes favoris" value={fav.favorites.length ? String(fav.favorites.length) : undefined} onPress={() => navigation.navigate("Favorites")} />
+							<ListRow icon="chatbubbles-outline" label="Écrire à nos expertes" onPress={() => navigation.navigate("Chat")} />
 							<ListRow icon="help-circle-outline" label="Aide et contact" onPress={() => WebBrowser.openBrowserAsync(`${SITE_URL}/contact`)} />
 						</Card>
 					</View>
@@ -92,7 +95,8 @@ export default function AccountScreen({ navigation }: Props) {
 
 				<SectionLabel>Baume</SectionLabel>
 				<Card>
-					<ListRow first icon="calendar-outline" label="Ateliers" onPress={() => WebBrowser.openBrowserAsync(`${SITE_URL}/ateliers`)} />
+					<ListRow first icon="chatbubbles-outline" label="Écrire à nos expertes" value={unread ? `${unread} nouveau${unread > 1 ? "x" : ""}` : undefined} onPress={() => navigation.navigate("Chat")} />
+					<ListRow icon="calendar-outline" label="Ateliers" onPress={() => WebBrowser.openBrowserAsync(`${SITE_URL}/ateliers`)} />
 					<ListRow icon="help-circle-outline" label="Aide et contact" onPress={() => WebBrowser.openBrowserAsync(`${SITE_URL}/contact`)} />
 				</Card>
 			</ScrollView>

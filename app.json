@@ -7,22 +7,46 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "runtimeVersion": { "policy": "appVersion" },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.baume.shop",
-      "infoPlist": { "ITSAppUsesNonExemptEncryption": false }
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.baume.shop",
-      "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#3D2A2A" }
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3D2A2A"
+      }
     },
     "plugins": [
       "expo-font",
       "expo-web-browser",
-      ["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 220, "resizeMode": "contain", "backgroundColor": "#3D2A2A" }],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#3D2A2A"
+        }
+      ],
       "expo-asset",
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9f6adf67-b2b5-4b53-ae3b-f265e3f9746c"
+      }
+    },
+    "owner": "weblax-studio",
+    "updates": {
+      "url": "https://u.expo.dev/9f6adf67-b2b5-4b53-ae3b-f265e3f9746c"
+    }
   }
 }

@@ -115,3 +115,22 @@ export type CheckoutStatus = {
 	order_ready?: boolean;
 	[key: string]: any;
 };
+
+export type Conversation = {
+	id: string;
+	status: "open" | "locked" | string;
+	last_message_at?: string | null;
+	created_at?: string | null;
+	admin_typing_at?: string | null;
+	locked_at?: string | null;
+};
+
+export type ChatMessage = {
+	id: string;
+	conversation_id: string;
+	sender_id?: string | null;
+	sender_role: "customer" | "admin" | string;
+	content: string;
+	created_at: string;
+	read_at?: string | null;
+};

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { errorMessage } from "../api/client";
-import { fetchCategories, fetchLoyalty, fetchProducts } from "../api/endpoints";
+import { fetchCategories, fetchLoyalty, fetchProducts, fetchUnreadCount } from "../api/endpoints";
 import type { Category, Loyalty, Product } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { BaumeLogo, BaumeMonogram } from "../components/BaumeLogo";
@@ -24,6 +25,14 @@ export default function HomeScreen({ navigation }: Props) {
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
+	const [unread, setUnread] = useState(0);
+
+	useFocusEffect(
+		useCallback(() => {
+			if (user) fetchUnreadCount().then(setUnread).catch(() => {});
+			else setUnread(0);
+		}, [user]),
+	);
 
 	const load = useCallback(async () => {
 		try {
@@ -53,7 +62,15 @@ export default function HomeScreen({ navigation }: Props) {
 
 	return (
 		<Screen>
-			<TopBar left={<BaumeLogo width={124} />} right={<IconButton icon="search" label="Rechercher" onPress={() => navigation.navigate("Search")} />} />
+			<TopBar
+				left={<BaumeLogo width={124} />}
+				right={
+					<View style={{ flexDirection: "row", gap: 8 }}>
+						<IconButton icon="chatbubbles-outline" label="Écrire à nos expertes" badge={unread || undefined} onPress={() => navigation.navigate("Chat")} />
+						<IconButton icon="search" label="Rechercher" onPress={() => navigation.navigate("Search")} />
+					</View>
+				}
+			/>
 			<ScrollView
 				contentContainerStyle={{ paddingBottom: space.xxl }}
 				refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}

@@ -26,6 +26,7 @@ export type RootStackParamList = {
 	Settings: undefined;
 	Profile: undefined;
 	Favorites: undefined;
+	Chat: undefined;
 };
 
 export type RootScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;
