@@ -70,6 +70,15 @@ export default function SettingsScreen({ navigation }: RootScreenProps<"Settings
 				</Card>
 				<Text style={styles.note}>Les notifications sur le téléphone arrivent dans une prochaine version ; vos choix sont déjà enregistrés.</Text>
 
+				{user ? (
+					<>
+						<SectionLabel>Sécurité</SectionLabel>
+						<Card>
+							<ListRow first icon="key-outline" label="Double authentification" onPress={() => navigation.navigate("Security")} />
+						</Card>
+					</>
+				) : null}
+
 				<SectionLabel>Préférences et données</SectionLabel>
 				<Card>
 					<ListRow first icon="globe-outline" label="Langue" value="Français" onPress={() => Alert.alert("Langue", "L'application est disponible en français.")} />

@@ -1,14 +1,17 @@
 import React, { useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { errorMessage } from "../api/client";
-import { useAuth } from "../auth/AuthProvider";
+import { useAuth, type MfaStep } from "../auth/AuthProvider";
 import { Button, Field, IconButton, Screen, Segmented, Title, TopBar } from "../components/ui";
 import { animateLayout } from "../components/motion";
 import { colors, font, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
 
 export default function LoginScreen({ navigation, route }: RootScreenProps<"Login">) {
-	const { signIn, signUp } = useAuth();
+	const { signIn, signUp, completeMfa } = useAuth();
+	// Étape du code à 6 chiffres (double authentification active sur le compte).
+	const [mfa, setMfa] = useState<MfaStep | null>(null);
+	const [code, setCode] = useState("");
 	const [mode, setMode] = useState<"login" | "register">(route.params?.mode || "login");
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -26,7 +29,13 @@ export default function LoginScreen({ navigation, route }: RootScreenProps<"Logi
 		setBusy(true);
 		try {
 			if (mode === "login") {
-				await signIn(email, password);
+				const step = await signIn(email, password);
+				if (step) {
+					animateLayout();
+					setMfa(step);
+					setCode("");
+					return;
+				}
 				navigation.goBack();
 			} else {
 				const result = await signUp({ email, password, first_name: firstName.trim() || undefined, last_name: lastName.trim() || undefined });
@@ -41,6 +50,72 @@ export default function LoginScreen({ navigation, route }: RootScreenProps<"Logi
 		} finally {
 			setBusy(false);
 		}
+	}
+
+	async function submitCode() {
+		const digits = code.replace(/\D/g, "");
+		if (!mfa) return;
+		if (digits.length !== 6) return setError("Saisissez les 6 chiffres affichés dans votre application.");
+		setError(null);
+		setBusy(true);
+		try {
+			await completeMfa(mfa, digits);
+			navigation.goBack();
+		} catch (e) {
+			const expired = (e as { response?: { status?: number } })?.response?.status === 401;
+			setError(errorMessage(e, "Code refusé."));
+			setCode("");
+			if (expired) {
+				animateLayout();
+				setMfa(null);
+				setPassword("");
+			}
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	if (mfa) {
+		return (
+			<Screen edges={["top", "bottom"]}>
+				<TopBar left={<IconButton icon="close" label="Fermer" onPress={() => navigation.goBack()} />} />
+				<KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+					<ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+						<Title>Code de sécurité</Title>
+						<Text style={styles.reason}>
+							Ouvrez votre application d'authentification et saisissez le code à 6 chiffres affiché pour Baume.
+						</Text>
+						<Field
+							label="Code à 6 chiffres"
+							value={code}
+							onChangeText={(t) => setCode(t.replace(/\D/g, "").slice(0, 6))}
+							keyboardType="number-pad"
+							textContentType="oneTimeCode"
+							autoComplete="one-time-code"
+							autoFocus
+							maxLength={6}
+							onSubmitEditing={submitCode}
+							style={{}}
+						/>
+						{error ? <Text style={styles.error}>{error}</Text> : null}
+						<Button title="Valider" onPress={submitCode} loading={busy} disabled={code.length !== 6} />
+						<Pressable
+							onPress={() => {
+								animateLayout();
+								setMfa(null);
+								setCode("");
+								setError(null);
+							}}
+							hitSlop={8}
+							style={{ alignSelf: "center" }}
+						>
+							<Text style={styles.link}>Revenir à la connexion</Text>
+						</Pressable>
+						<Text style={styles.legal}>Téléphone perdu ? Écrivez-nous depuis le site : nous réinitialiserons la double authentification.</Text>
+					</ScrollView>
+				</KeyboardAvoidingView>
+			</Screen>
+		);
 	}
 
 	return (

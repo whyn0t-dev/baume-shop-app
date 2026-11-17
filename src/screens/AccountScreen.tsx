@@ -92,6 +92,7 @@ export default function AccountScreen({ navigation }: Props) {
 				<Card>
 					<ListRow first icon="id-card-outline" label="Informations personnelles" onPress={() => navigation.navigate("Profile")} />
 					<ListRow icon="location-outline" label="Adresse de livraison" value={addressCount ? user.city || "Enregistrée" : "À compléter"} onPress={() => navigation.navigate("Profile")} />
+					<ListRow icon="key-outline" label="Double authentification" onPress={() => navigation.navigate("Security")} />
 				</Card>
 
 				<SectionLabel>Baume</SectionLabel>

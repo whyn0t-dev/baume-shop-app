@@ -24,6 +24,7 @@ export type RootStackParamList = {
 	OrderDetail: { orderId: string };
 	ReturnRequest: { orderId: string; label?: string };
 	Settings: undefined;
+	Security: undefined;
 	Profile: undefined;
 	Favorites: undefined;
 	Chat: undefined;

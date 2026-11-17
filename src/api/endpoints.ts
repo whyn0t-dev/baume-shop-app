@@ -47,9 +47,40 @@ export async function fetchCategory(kind: "besoin" | "produit", slug: string) {
 }
 
 // ── Compte ─────────────────────────────────────────────────────────────────
+export type LoginResult =
+	| { mfa_required?: false; user: User; access_token: string; refresh_token: string }
+	| { mfa_required: true; mfa_ticket: string; factor_id: string };
+
 export async function login(email: string, password: string) {
 	const res = await api.post("/auth/login", { email, password });
+	return res.data as LoginResult;
+}
+
+// ── Double authentification (code à 6 chiffres) ──────────────────────────
+// Le ticket est une session partielle : il est envoyé explicitement et n'est jamais enregistré.
+export async function mfaLogin(ticket: string, factorId: string, code: string) {
+	const res = await api.post("/auth/mfa/login", { mfa_ticket: ticket, factor_id: factorId, code });
 	return res.data as { user: User; access_token: string; refresh_token: string };
+}
+
+export async function fetchMfaStatus() {
+	const res = await api.get("/auth/mfa/status");
+	return res.data as { enabled: boolean; since?: string | null };
+}
+
+export async function startMfaEnroll() {
+	const res = await api.post("/auth/mfa/enroll");
+	return res.data as { factor_id: string; secret: string; uri: string; qr_code?: string };
+}
+
+export async function confirmMfaEnroll(factorId: string, code: string) {
+	const res = await api.post("/auth/mfa/enroll/verify", { factor_id: factorId, code });
+	return res.data as { access_token: string; refresh_token: string };
+}
+
+export async function disableMfa(code: string) {
+	const res = await api.post("/auth/mfa/disable", { code });
+	return res.data as { access_token?: string; refresh_token?: string };
 }
 
 export async function register(payload: { email: string; password: string; first_name?: string; last_name?: string }) {

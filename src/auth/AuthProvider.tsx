@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearSession, getAccessToken, isAuthError, loadStoredUser, saveSession, setSessionExpiredHandler } from "../api/client";
-import { fetchMe, login as apiLogin, register as apiRegister } from "../api/endpoints";
+import { fetchMe, login as apiLogin, mfaLogin, register as apiRegister } from "../api/endpoints";
 import type { User } from "../api/types";
 
 const WELCOME_KEY = "shop_welcome_seen";
@@ -12,11 +12,17 @@ type AuthContextValue = {
 	user: User | null;
 	welcomeSeen: boolean;
 	markWelcomeSeen: () => void;
-	signIn: (email: string, password: string) => Promise<void>;
+	/** Renvoie l'étape « code » si la double authentification est active sur le compte. */
+	signIn: (email: string, password: string) => Promise<MfaStep | null>;
+	completeMfa: (step: MfaStep, code: string) => Promise<void>;
+	/** Remplace les jetons après activation / désactivation de la double authentification. */
+	replaceTokens: (t: { access_token?: string; refresh_token?: string }) => Promise<void>;
 	signUp: (p: { email: string; password: string; first_name?: string; last_name?: string }) => Promise<"signedIn" | "confirmEmail">;
 	signOut: () => Promise<void>;
 	refreshUser: () => Promise<void>;
 };
+
+export type MfaStep = { ticket: string; factorId: string };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -77,6 +83,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const signIn = useCallback(
 		async (email: string, password: string) => {
 			const res = await apiLogin(email.trim().toLowerCase(), password);
+			if (res.mfa_required) return { ticket: res.mfa_ticket, factorId: res.factor_id };
+			await saveSession(res);
+			setUser(res.user);
+			markWelcomeSeen();
+			refreshUser();
+			return null;
+		},
+		[markWelcomeSeen, refreshUser],
+	);
+
+	const completeMfa = useCallback(
+		async (step: MfaStep, code: string) => {
+			const res = await mfaLogin(step.ticket, step.factorId, code);
 			await saveSession(res);
 			setUser(res.user);
 			markWelcomeSeen();
@@ -84,6 +103,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		},
 		[markWelcomeSeen, refreshUser],
 	);
+
+	const replaceTokens = useCallback(async (t: { access_token?: string; refresh_token?: string }) => {
+		if (t?.access_token) await saveSession({ access_token: t.access_token, refresh_token: t.refresh_token });
+	}, []);
 
 	const signUp = useCallback(
 		async (p: { email: string; password: string; first_name?: string; last_name?: string }) => {
@@ -106,8 +129,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	const value = useMemo(
-		() => ({ ready, user, welcomeSeen, markWelcomeSeen, signIn, signUp, signOut, refreshUser }),
-		[ready, user, welcomeSeen, markWelcomeSeen, signIn, signUp, signOut, refreshUser],
+		() => ({ ready, user, welcomeSeen, markWelcomeSeen, signIn, completeMfa, replaceTokens, signUp, signOut, refreshUser }),
+		[ready, user, welcomeSeen, markWelcomeSeen, signIn, completeMfa, replaceTokens, signUp, signOut, refreshUser],
 	);
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
