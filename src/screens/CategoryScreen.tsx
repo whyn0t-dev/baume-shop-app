@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { FlatList, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { errorMessage } from "../api/client";
 import { fetchCategories, fetchCategory, fetchProducts } from "../api/endpoints";
 import type { Product } from "../api/types";
-import { Button, Chip, EmptyState, ErrorBanner, IconButton, Kicker, Loading, ProductCard, Screen, SectionLabel, Title, TopBar } from "../components/ui";
+import { Button, Chip, EmptyState, ErrorBanner, IconButton, Kicker, ProductCard, Screen, SectionLabel, SkeletonProductGrid, Title, TopBar } from "../components/ui";
+import { BottomSheet } from "../components/BottomSheet";
+import { haptic } from "../lib/haptics";
+import { FadeIn, animateLayout, stagger } from "../components/motion";
 import { num } from "../lib/format";
 import { colors, font, fonts, radius, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
@@ -99,9 +102,25 @@ export default function CategoryScreen({ navigation, route }: RootScreenProps<"C
 						<ErrorBanner message={error} onRetry={load} />
 						{subCats.length > 1 ? (
 							<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: space.sm }}>
-								<Chip label="Tout" active={!sub} onPress={() => setSub(null)} />
+								<Chip
+									label="Tout"
+									active={!sub}
+									onPress={() => {
+										if (!sub) return;
+										animateLayout();
+										setSub(null);
+									}}
+								/>
 								{subCats.map((c) => (
-									<Chip key={c} label={catNames[c] || c} active={sub === c} onPress={() => setSub(sub === c ? null : c)} />
+									<Chip
+										key={c}
+										label={catNames[c] || c}
+										active={sub === c}
+										onPress={() => {
+											animateLayout();
+											setSub(sub === c ? null : c);
+										}}
+									/>
 								))}
 							</ScrollView>
 						) : null}
@@ -109,21 +128,21 @@ export default function CategoryScreen({ navigation, route }: RootScreenProps<"C
 				}
 				ListEmptyComponent={
 					loading ? (
-						<Loading />
+						<SkeletonProductGrid rows={2} />
 					) : (
 						<EmptyState icon="search-outline" title="Aucun produit" text="Aucun produit ne correspond à ces filtres.">
-							{activeFilters || sub ? <Button title="Réinitialiser les filtres" variant="secondary" onPress={() => { setFilters(DEFAULT); setSub(null); }} /> : null}
+							{activeFilters || sub ? <Button title="Réinitialiser les filtres" variant="secondary" onPress={() => { animateLayout(); setFilters(DEFAULT); setSub(null); }} /> : null}
 						</EmptyState>
 					)
 				}
-				renderItem={({ item }) => (
-					<View style={{ flex: 1 }}>
+				renderItem={({ item, index }) => (
+					<FadeIn delay={stagger(index, 50, 6)} style={{ flex: 1 }}>
 						<ProductCard
 							product={item}
 							categoryLabel={item.product_category ? catNames[item.product_category] : undefined}
 							onPress={() => navigation.navigate("Product", { slug: item.slug, product: item })}
 						/>
-					</View>
+					</FadeIn>
 				)}
 			/>
 			<FilterSheet
@@ -132,8 +151,9 @@ export default function CategoryScreen({ navigation, route }: RootScreenProps<"C
 				value={filters}
 				onClose={() => setSheet(false)}
 				onApply={(f) => {
-					setFilters(f);
 					setSheet(false);
+					animateLayout();
+					setFilters(f);
 				}}
 				count={(f) =>
 					products.filter((p) => (!sub || p.product_category === sub) && (!f.size || (p.sizes || []).includes(f.size)) && (!f.maxPrice || num(p.price) <= f.maxPrice) && (!f.inStock || p.available !== false)).length
@@ -163,13 +183,11 @@ function FilterSheet({ visible, sizes, value, onClose, onApply, count }: { visib
 		["new", "Nouveautés"],
 	];
 	return (
-		<Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-			<Pressable style={styles.overlay} onPress={onClose} accessibilityLabel="Fermer les filtres" />
-			<View style={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]}>
+		<BottomSheet visible={visible} onClose={onClose} closeLabel="Fermer les filtres" style={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]}>
 				<View style={styles.handle} />
 				<View style={styles.sheetHead}>
 					<Text style={styles.sheetTitle}>Filtres</Text>
-					<Pressable onPress={() => setF(DEFAULT)} hitSlop={8}>
+					<Pressable onPress={() => { animateLayout(180); setF(DEFAULT); }} hitSlop={8}>
 						<Text style={styles.link}>Réinitialiser</Text>
 					</Pressable>
 				</View>
@@ -199,18 +217,16 @@ function FilterSheet({ visible, sizes, value, onClose, onApply, count }: { visib
 					</View>
 					<View style={styles.stock}>
 						<Text style={{ fontSize: font.body, color: colors.text }}>En stock uniquement</Text>
-						<Switch value={f.inStock} onValueChange={(v) => setF({ ...f, inStock: v })} trackColor={{ true: colors.brand, false: colors.border }} thumbColor={colors.white} />
+						<Switch value={f.inStock} onValueChange={(v) => { haptic.selection(); setF({ ...f, inStock: v }); }} trackColor={{ true: colors.brand, false: colors.border }} thumbColor={colors.white} />
 					</View>
 				</ScrollView>
 				<Button title={`Voir ${count(f)} produit${count(f) > 1 ? "s" : ""}`} onPress={() => onApply(f)} style={{ marginTop: space.lg }} />
-			</View>
-		</Modal>
+		</BottomSheet>
 	);
 }
 
 const styles = StyleSheet.create({
 	sub: { fontSize: 14, color: colors.textMuted, lineHeight: 20 },
-	overlay: { flex: 1, backgroundColor: colors.overlay },
 	sheet: { maxHeight: "82%", backgroundColor: colors.background, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, paddingHorizontal: space.xl, paddingTop: 10 },
 	handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: colors.border, marginBottom: space.md },
 	sheetHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: space.lg },

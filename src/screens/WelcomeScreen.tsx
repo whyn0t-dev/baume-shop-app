@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { BaumeLogo } from "../components/BaumeLogo";
 import { Button } from "../components/ui";
+import { FadeIn } from "../components/motion";
 import { useAuth } from "../auth/AuthProvider";
 import { colors, font, fonts, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
@@ -29,24 +30,29 @@ export default function WelcomeScreen({ navigation }: RootScreenProps<"Welcome">
 	return (
 		<SafeAreaView style={styles.root} edges={["top", "bottom"]}>
 			<View style={styles.content}>
-				<BaumeLogo width={170} color={colors.background} />
-				<Text style={styles.title}>Une boutique douce et guidée, sans jugement.</Text>
+				{/* Suite logique de l'écran de démarrage bordeaux : le logo, puis le message, puis les arguments. */}
+				<FadeIn duration={500} offset={6}>
+					<BaumeLogo width={170} color={colors.background} />
+				</FadeIn>
+				<FadeIn delay={180} duration={500}>
+					<Text style={styles.title}>Une boutique douce et guidée, sans jugement.</Text>
+				</FadeIn>
 				<View style={{ gap: space.lg, marginTop: space.xl }}>
-					{POINTS.map(([icon, text]) => (
-						<View key={text} style={styles.point}>
+					{POINTS.map(([icon, text], i) => (
+						<FadeIn key={text} delay={360 + i * 90} axis="x" offset={-10} style={styles.point}>
 							<Ionicons name={icon} size={22} color={colors.taupe} />
 							<Text style={styles.pointText}>{text}</Text>
-						</View>
+						</FadeIn>
 					))}
 				</View>
 			</View>
-			<View style={styles.actions}>
+			<FadeIn delay={700} style={styles.actions}>
 				<Button title="Créer un compte" variant="light" onPress={() => go("register")} />
 				<Button title="Se connecter" variant="outlineLight" onPress={() => go("login")} />
 				<Pressable onPress={() => go("browse")} hitSlop={10} style={{ alignSelf: "center", padding: space.sm }}>
 					<Text style={styles.skip}>Découvrir sans compte</Text>
 				</Pressable>
-			</View>
+			</FadeIn>
 		</SafeAreaView>
 	);
 }

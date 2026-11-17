@@ -8,7 +8,9 @@ import { fetchConversations, fetchMessages, sendMessage, setTyping, startConvers
 import type { ChatMessage, Conversation } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { BaumeMonogram } from "../components/BaumeLogo";
-import { Button, EmptyState, IconButton, Loading, Screen, TopBar } from "../components/ui";
+import { Button, EmptyState, IconButton, Screen, TopBar } from "../components/ui";
+import { FadeIn, PressableScale, Skeleton, TypingDots } from "../components/motion";
+import { haptic } from "../lib/haptics";
 import { colors, font, fonts, radius, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
 
@@ -32,6 +34,10 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 	const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const convRef = useRef<Conversation | null>(null);
 	convRef.current = conversation;
+	// Messages déjà présents au premier chargement : affichés directement, sans animation.
+	// Seuls les messages qui arrivent ensuite glissent à l'écran.
+	const initialIds = useRef<Set<string> | null>(null);
+	const knownIds = useRef<Set<string>>(new Set());
 
 	// Charge la dernière conversation et ses messages (n'écrase l'écran que si quelque chose a changé).
 	const refresh = useCallback(async () => {
@@ -43,8 +49,12 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 				const typingAt = conv.admin_typing_at ? new Date(conv.admin_typing_at).getTime() : 0;
 				setAdminTyping(Date.now() - typingAt < 4000);
 				const msgs = await fetchMessages(conv.id);
+				if (!initialIds.current) initialIds.current = new Set(msgs.map((m) => m.id));
+				// Nouvelle réponse de l'équipe pendant que la conversation est ouverte : petite vibration.
+				else if (msgs.some((m) => m.sender_role !== "customer" && !knownIds.current.has(m.id))) haptic.light();
+				msgs.forEach((m) => knownIds.current.add(m.id));
 				setMessages((prev) => (prev.length === msgs.length && prev[prev.length - 1]?.id === msgs[msgs.length - 1]?.id ? prev : msgs));
-			}
+			} else if (!initialIds.current) initialIds.current = new Set();
 			setError(null);
 		} catch (e) {
 			setError(errorMessage(e, "Messagerie momentanément indisponible."));
@@ -111,6 +121,7 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 		const tempId = retryId || `tmp-${Date.now()}`;
 		setPending((p) => (retryId ? p.map((x) => (x.tempId === retryId ? { ...x, failed: false } : x)) : [...p, { tempId, content: text }]));
 		if (!retryId) setInput("");
+		haptic.light();
 		setSending(true);
 		try {
 			if (!conversation || conversation.status === "locked") {
@@ -125,6 +136,7 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 			setPending((p) => p.filter((x) => x.tempId !== tempId));
 			if (conversation) setTyping(conversation.id, false).catch(() => {});
 		} catch (e) {
+			haptic.warning();
 			setPending((p) => p.map((x) => (x.tempId === tempId ? { ...x, failed: true } : x)));
 			setError(errorMessage(e, "Message non envoyé."));
 		} finally {
@@ -172,12 +184,17 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 
 			<KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }} keyboardVerticalOffset={0}>
 				{!loaded ? (
-					<Loading />
+					// Squelette de conversation pendant le premier chargement.
+					<View style={{ padding: space.lg, gap: 10 }} accessibilityLabel="Chargement de la conversation">
+						<Skeleton height={44} width="62%" radius={radius.lg} />
+						<Skeleton height={44} width="48%" radius={radius.lg} style={{ alignSelf: "flex-end" }} />
+						<Skeleton height={64} width="70%" radius={radius.lg} />
+					</View>
 				) : (
 					<FlatList
 						ref={listRef}
 						data={rows}
-						keyExtractor={(r, i) => (r.kind === "msg" ? r.m.id : r.kind === "pending" ? r.p.tempId : `typing-${i}`)}
+						keyExtractor={(r, i) => (r.kind === "msg" ? r.m.id : r.kind === "pending" ? r.p.tempId : "typing")}
 						contentContainerStyle={{ padding: space.lg, gap: 6, flexGrow: 1 }}
 						onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
 						keyboardShouldPersistTaps="handled"
@@ -193,14 +210,17 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 						renderItem={({ item }) => {
 							if (item.kind === "typing") {
 								return (
-									<View style={[styles.bubble, styles.theirs]}>
-										<Text style={[styles.text, { color: colors.textMuted }]}>…</Text>
-									</View>
+									<FadeIn offset={6} duration={220}>
+										<View style={[styles.bubble, styles.theirs, { paddingVertical: 12 }]}>
+											<TypingDots />
+										</View>
+									</FadeIn>
 								);
 							}
 							if (item.kind === "pending") {
 								return (
-									<Pressable onPress={() => item.p.failed && send(item.p.content, item.p.tempId)} style={{ alignSelf: "flex-end", maxWidth: "80%" }}>
+									<FadeIn offset={12} duration={260} style={{ alignSelf: "flex-end", maxWidth: "80%" }}>
+									<Pressable onPress={() => item.p.failed && send(item.p.content, item.p.tempId)} disabled={!item.p.failed} accessibilityRole={item.p.failed ? "button" : undefined}>
 										<View style={[styles.bubble, styles.mine, { opacity: item.p.failed ? 1 : 0.6 }]}>
 											<Text style={[styles.text, { color: colors.white }]}>{item.p.content}</Text>
 										</View>
@@ -208,12 +228,17 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 											{item.p.failed ? "Non envoyé · toucher pour réessayer" : "Envoi…"}
 										</Text>
 									</Pressable>
+									</FadeIn>
 								);
 							}
 							const m = item.m;
 							const mine = m.sender_role === "customer";
+							// Réponse de l'équipe reçue pendant que l'écran est ouvert : elle glisse depuis la gauche.
+							// Mes propres messages ne s'animent pas une seconde fois (leur bulle « Envoi… » l'a déjà fait).
+							const fresh = !mine && initialIds.current !== null && !initialIds.current.has(m.id);
+							const Wrap = fresh ? FadeIn : View;
 							return (
-								<View>
+								<Wrap {...(fresh ? { axis: "x" as const, offset: -14, duration: 300 } : {})}>
 									{item.day ? <Text style={styles.day}>{item.day}</Text> : null}
 									<View style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "80%" }}>
 										{!mine ? <Text style={styles.from}>Équipe Baume</Text> : null}
@@ -224,7 +249,7 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 											{new Date(m.created_at).toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" })}
 										</Text>
 									</View>
-								</View>
+								</Wrap>
 							);
 						}}
 					/>
@@ -237,7 +262,14 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 						<Text style={styles.lockedText}>
 							<Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} /> Cette conversation est clôturée (48 h sans message).
 						</Text>
-						<Button title="Nouvelle conversation" icon="create-outline" onPress={() => setStartNew(true)} />
+						<Button
+							title="Nouvelle conversation"
+							icon="create-outline"
+							onPress={() => {
+								haptic.selection();
+								setStartNew(true);
+							}}
+						/>
 					</View>
 				) : (
 					<View style={[styles.composer, { paddingBottom: insets.bottom + space.sm }]}>
@@ -250,14 +282,16 @@ export default function ChatScreen({ navigation }: RootScreenProps<"Chat">) {
 							maxLength={2000}
 							style={styles.input}
 						/>
-						<Pressable
+						<PressableScale
 							onPress={() => send(input)}
 							disabled={!input.trim() || sending}
+							scaleTo={0.88}
+							accessibilityRole="button"
 							accessibilityLabel="Envoyer"
 							style={[styles.sendBtn, (!input.trim() || sending) && { opacity: 0.4 }]}
 						>
 							<Ionicons name="arrow-up" size={20} color={colors.white} />
-						</Pressable>
+						</PressableScale>
 					</View>
 				)}
 			</KeyboardAvoidingView>

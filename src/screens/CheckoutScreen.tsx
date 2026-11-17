@@ -8,6 +8,8 @@ import { createCheckout, fetchCheckoutStatus, updateProfile } from "../api/endpo
 import { useAuth } from "../auth/AuthProvider";
 import { useCart } from "../store/CartProvider";
 import { Button, Card, Chip, Field, IconButton, Screen, SectionLabel, Title, TopBar, TotalRow } from "../components/ui";
+import { animateLayout } from "../components/motion";
+import { haptic } from "../lib/haptics";
 import { money } from "../lib/format";
 import { SHIPPING, colors, font, radius, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
@@ -65,7 +67,10 @@ export default function CheckoutScreen({ navigation }: RootScreenProps<"Checkout
 
 	async function pay() {
 		const problem = validate();
-		if (problem) return setError(problem);
+		if (problem) {
+			haptic.warning();
+			return setError(problem);
+		}
 		setError(null);
 		setBusy(true);
 		try {
@@ -119,6 +124,7 @@ export default function CheckoutScreen({ navigation }: RootScreenProps<"Checkout
 			const status = await fetchCheckoutStatus(session.session_id).catch(() => null);
 			if (status?.payment_status === "paid") return finish(session.session_id);
 		} catch (e) {
+			haptic.warning();
 			setError(errorMessage(e, "Impossible de préparer le paiement."));
 		} finally {
 			setBusy(false);
@@ -144,7 +150,12 @@ export default function CheckoutScreen({ navigation }: RootScreenProps<"Checkout
 						title="À domicile"
 						sub={country === "CH" ? "Suisse · 2 à 3 jours ouvrés" : "Europe · 3 à 5 jours ouvrés"}
 						price={after >= rule.threshold ? "Offerte" : money(rule.fee)}
-						onPress={() => setMethod("delivery")}
+						onPress={() => {
+							if (method === "delivery") return;
+							haptic.selection();
+							animateLayout();
+							setMethod("delivery");
+						}}
 					/>
 					<Option
 						on={method === "pickup"}
@@ -152,7 +163,12 @@ export default function CheckoutScreen({ navigation }: RootScreenProps<"Checkout
 						title="Retrait à la boutique"
 						sub="Rue du Rhône 15, Genève · prêt sous 24 h"
 						price="Gratuit"
-						onPress={() => setMethod("pickup")}
+						onPress={() => {
+							if (method === "pickup") return;
+							haptic.selection();
+							animateLayout();
+							setMethod("pickup");
+						}}
 					/>
 
 					<SectionLabel>Vos coordonnées</SectionLabel>

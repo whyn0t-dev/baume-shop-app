@@ -2,6 +2,7 @@ import React from "react";
 import { FlatList, Text, View } from "react-native";
 import { useFavorites } from "../store/FavoritesProvider";
 import { Button, EmptyState, IconButton, ProductCard, Screen, Title, TopBar } from "../components/ui";
+import { FadeIn, stagger } from "../components/motion";
 import { colors, font, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
 
@@ -25,10 +26,10 @@ export default function FavoritesScreen({ navigation }: RootScreenProps<"Favorit
 						<Button title="Découvrir le shop" onPress={() => navigation.navigate("Tabs", { screen: "Shop" })} />
 					</EmptyState>
 				}
-				renderItem={({ item }) => (
-					<View style={{ flex: 1 }}>
+				renderItem={({ item, index }) => (
+					<FadeIn delay={stagger(index, 50, 6)} style={{ flex: 1 }}>
 						<ProductCard product={item} onPress={() => navigation.navigate("Product", { slug: item.slug, product: item })} />
-					</View>
+					</FadeIn>
 				)}
 			/>
 		</Screen>

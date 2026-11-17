@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Dimensions, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { AccessibilityInfo, Animated, Dimensions, Pressable, ScrollView, ScrollViewInstance, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { errorMessage } from "../api/client";
 import { fetchProduct, fetchProductImages, fetchVariants } from "../api/endpoints";
 import type { Product, Variant } from "../api/types";
 import { useCart } from "../store/CartProvider";
-import { Badge, Button, ErrorBanner, FavoriteButton, IconButton, Kicker, Loading, ProductImage, Title } from "../components/ui";
+import { Badge, Button, ErrorBanner, FavoriteButton, IconButton, Kicker, ProductImage, Title } from "../components/ui";
+import { EASE, FadeIn, Skeleton, animateLayout, isReducedMotion, useShake } from "../components/motion";
+import { haptic } from "../lib/haptics";
 import { longDate, num, price, productName } from "../lib/format";
 import { colors, font, radius, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
@@ -22,9 +24,21 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 	const [size, setSize] = useState<string | null>(null);
 	const [color, setColor] = useState<string | null>(null);
 	const [qty, setQty] = useState(1);
-	const [page, setPage] = useState(0);
 	const [open, setOpen] = useState<string | null>("description");
 	const [error, setError] = useState<string | null>(null);
+	const [sizeError, setSizeError] = useState(false);
+	const [added, setAdded] = useState(false);
+	const [toast, setToast] = useState<{ key: number; text: string } | null>(null);
+	const scrollX = useRef(new Animated.Value(0)).current;
+	const scrollRef = useRef<ScrollViewInstance>(null);
+	const bodyY = useRef(0);
+	const sizesY = useRef(0);
+	const addedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const sizeShake = useShake();
+
+	useEffect(() => () => {
+		if (addedTimer.current) clearTimeout(addedTimer.current);
+	}, []);
 
 	useEffect(() => {
 		let alive = true;
@@ -70,10 +84,25 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 	}, [variants, size, color]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	if (!product) {
+		// Ouverture depuis le panier ou une commande : squelette au gabarit de la fiche.
 		return (
-			<View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top + 60 }}>
-				<ErrorBanner message={error} />
-				{!error ? <Loading /> : null}
+			<View style={{ flex: 1, backgroundColor: colors.background }}>
+				<Skeleton height={420} radius={0} />
+				<View style={[styles.floating, { top: insets.top + 8 }]}>
+					<IconButton icon="chevron-back" label="Retour" onPress={() => navigation.goBack()} />
+				</View>
+				<View style={[styles.body, { gap: 12 }]}>
+					{error ? (
+						<ErrorBanner message={error} />
+					) : (
+						<>
+							<Skeleton height={30} width="70%" />
+							<Skeleton height={16} width="35%" />
+							<Skeleton height={14} width="90%" style={{ marginTop: space.md }} />
+							<Skeleton height={14} width="80%" />
+						</>
+					)}
+				</View>
 			</View>
 		);
 	}
@@ -92,14 +121,37 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 
 	function addToCart() {
 		if (needsSize && !size) {
-			Alert.alert("Choisissez une taille", "Sélectionnez votre taille avant d'ajouter ce produit au panier.");
+			// Taille manquante : on ramène la cliente sur le sélecteur, qui tremble légèrement.
+			haptic.warning();
+			setSizeError(true);
+			scrollRef.current?.scrollTo({ y: Math.max(0, bodyY.current + sizesY.current - 140), animated: !isReducedMotion() });
+			setTimeout(sizeShake.shake, isReducedMotion() ? 0 : 250);
+			AccessibilityInfo.announceForAccessibility("Choisissez votre taille pour continuer.");
 			return;
 		}
 		cart.add(p, { variant: selected, size, color, quantity: qty });
-		Alert.alert("Ajouté au panier", `${productName(p)}${size ? ` · taille ${size}` : ""}`, [
-			{ text: "Continuer mes achats", style: "cancel" },
-			{ text: "Voir le panier", onPress: () => navigation.navigate("Tabs", { screen: "Cart" }) },
-		]);
+		haptic.success();
+		setAdded(true);
+		if (addedTimer.current) clearTimeout(addedTimer.current);
+		addedTimer.current = setTimeout(() => setAdded(false), 1800);
+		const label = `${qty > 1 ? `${qty} × ` : ""}${productName(p)}${size ? ` · taille ${size}` : ""}`;
+		setToast({ key: Date.now(), text: label });
+		AccessibilityInfo.announceForAccessibility(`Ajouté au panier : ${label}`);
+	}
+
+	function chooseSize(s: string) {
+		if (s === size) return;
+		haptic.selection();
+		if (sizeError) animateLayout(180);
+		setSizeError(false);
+		setSize(s);
+	}
+
+	function changeQty(next: number) {
+		const v = Math.min(20, Math.max(1, next));
+		if (v === qty) return;
+		haptic.selection();
+		setQty(v);
 	}
 
 	const sections: [string, string, string | null | undefined][] = [
@@ -113,16 +165,18 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 
 	return (
 		<View style={{ flex: 1, backgroundColor: colors.background }}>
-			<ScrollView contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}>
+			<ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 120 + insets.bottom }} scrollEventThrottle={16}>
 				<View style={{ height: 420, backgroundColor: colors.sand }}>
 					{images.length ? (
-						<FlatList
+						<Animated.FlatList
 							data={images}
 							horizontal
 							pagingEnabled
 							showsHorizontalScrollIndicator={false}
 							keyExtractor={(u, i) => `${i}-${u}`}
-							onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / W))}
+							scrollEventThrottle={16}
+							// Les points suivent le doigt en continu (et non une fois la photo arrivée).
+							onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: false })}
 							renderItem={({ item }) => <ProductImage uri={item} height={420} radius={0} style={{ width: W }} />}
 						/>
 					) : (
@@ -130,9 +184,21 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 					)}
 					{images.length > 1 ? (
 						<View style={styles.dots}>
-							{images.map((_, i) => (
-								<View key={i} style={[styles.dot, i === page && styles.dotOn]} />
-							))}
+							{images.map((_, i) => {
+								const range = [(i - 1) * W, i * W, (i + 1) * W];
+								return (
+									<Animated.View
+										key={i}
+										style={[
+											styles.dot,
+											{
+												width: scrollX.interpolate({ inputRange: range, outputRange: [6, 18, 6], extrapolate: "clamp" }),
+												backgroundColor: scrollX.interpolate({ inputRange: range, outputRange: [colors.taupe, colors.brand, colors.taupe], extrapolate: "clamp" }),
+											},
+										]}
+									/>
+								);
+							})}
 						</View>
 					) : null}
 					<View style={[styles.floating, { top: insets.top + 8 }]}>
@@ -141,7 +207,7 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 					</View>
 				</View>
 
-				<View style={styles.body}>
+				<View style={styles.body} onLayout={(e) => (bodyY.current = e.nativeEvent.layout.y)}>
 					{p.preorder ? (
 						<Badge tone="info" icon="time-outline" label={`Précommande${p.preorder_shipping_date ? ` · expédition prévue le ${longDate(p.preorder_shipping_date)}` : ""}`} />
 					) : null}
@@ -159,7 +225,16 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 							<Text style={styles.label}>Couleur{color ? ` : ${color}` : ""}</Text>
 							<View style={styles.wrap}>
 								{(p.colors || []).map((c) => (
-									<Pressable key={c} onPress={() => setColor(c)} style={[styles.option, color === c && styles.optionOn]}>
+									<Pressable
+										key={c}
+										onPress={() => {
+											if (c === color) return;
+											haptic.selection();
+											setColor(c);
+										}}
+										style={[styles.option, color === c && styles.optionOn]}
+										accessibilityState={{ selected: color === c }}
+									>
 										<Text style={[styles.optionText, color === c && { color: colors.background }]}>{c}</Text>
 									</Pressable>
 								))}
@@ -168,9 +243,9 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 					) : null}
 
 					{needsSize ? (
-						<View style={{ gap: 10 }}>
-							<Text style={styles.label}>Taille</Text>
-							<View style={styles.wrap}>
+						<View style={{ gap: 10 }} onLayout={(e) => (sizesY.current = e.nativeEvent.layout.y)}>
+							<Text style={[styles.label, sizeError && { color: colors.danger }]}>Taille{size ? ` : ${size}` : ""}</Text>
+							<Animated.View style={[styles.wrap, sizeShake.style]}>
 								{sizes.map((s) => {
 									const ok = sizeAvailable(s) || Boolean(p.preorder);
 									const on = size === s;
@@ -178,15 +253,21 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 										<Pressable
 											key={s}
 											disabled={!ok}
-											onPress={() => setSize(s)}
+											onPress={() => chooseSize(s)}
 											accessibilityLabel={`Taille ${s}${ok ? "" : " épuisée"}`}
-											style={[styles.option, on && styles.optionOn, !ok && { opacity: 0.45 }]}
+											accessibilityState={{ selected: on, disabled: !ok }}
+											style={[styles.option, on && styles.optionOn, sizeError && !on && ok && { borderColor: colors.danger }, !ok && { opacity: 0.45 }]}
 										>
 											<Text style={[styles.optionText, on && { color: colors.background }, !ok && { textDecorationLine: "line-through" }]}>{s}</Text>
 										</Pressable>
 									);
 								})}
-							</View>
+							</Animated.View>
+							{sizeError ? (
+								<FadeIn offset={-4} duration={200}>
+									<Text style={[styles.muted, { color: colors.danger }]}>Choisissez votre taille pour continuer.</Text>
+								</FadeIn>
+							) : null}
 							{soldOutSizes.length && !p.preorder ? <Text style={styles.muted}>Épuisée : {soldOutSizes.join(", ")}.</Text> : null}
 						</View>
 					) : null}
@@ -201,7 +282,16 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 							.filter(([, , content]) => content && String(content).trim())
 							.map(([key, title, content], i) => (
 								<View key={key} style={i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }}>
-									<Pressable style={styles.accHead} onPress={() => setOpen(open === key ? null : key)} accessibilityState={{ expanded: open === key }}>
+									<Pressable
+										style={styles.accHead}
+										onPress={() => {
+											// L'ouverture et la fermeture des sections glissent au lieu de sauter.
+											animateLayout(220);
+											setOpen(open === key ? null : key);
+										}}
+										accessibilityRole="button"
+										accessibilityState={{ expanded: open === key }}
+									>
 										<Text style={styles.accTitle}>{title}</Text>
 										<Ionicons name={open === key ? "remove" : "add"} size={20} color={colors.brand} />
 									</Pressable>
@@ -214,26 +304,78 @@ export default function ProductScreen({ navigation, route }: RootScreenProps<"Pr
 
 			<View style={[styles.bar, { paddingBottom: insets.bottom + 12 }]}>
 				<View style={styles.stepper}>
-					<Pressable onPress={() => setQty(Math.max(1, qty - 1))} style={styles.stepBtn} accessibilityLabel="Diminuer la quantité">
+					<Pressable onPress={() => changeQty(qty - 1)} disabled={qty <= 1} style={[styles.stepBtn, qty <= 1 && { opacity: 0.35 }]} accessibilityLabel="Diminuer la quantité">
 						<Ionicons name="remove" size={18} color={colors.text} />
 					</Pressable>
 					<Text style={styles.qty}>{qty}</Text>
-					<Pressable onPress={() => setQty(Math.min(20, qty + 1))} style={styles.stepBtn} accessibilityLabel="Augmenter la quantité">
+					<Pressable onPress={() => changeQty(qty + 1)} disabled={qty >= 20} style={[styles.stepBtn, qty >= 20 && { opacity: 0.35 }]} accessibilityLabel="Augmenter la quantité">
 						<Ionicons name="add" size={18} color={colors.text} />
 					</Pressable>
 				</View>
 				<Button
-					title={!inStock ? "Épuisé" : p.preorder ? `Précommander · ${price(unitPrice * qty)}` : "Ajouter au panier"}
+					title={!inStock ? "Épuisé" : added ? (p.preorder ? "Précommande ajoutée" : "Ajouté au panier") : p.preorder ? `Précommander · ${price(unitPrice * qty)}` : "Ajouter au panier"}
+					icon={added && inStock ? "checkmark" : undefined}
 					onPress={addToCart}
 					disabled={!inStock}
 					style={{ flex: 1 }}
 				/>
 			</View>
+
+			{toast ? (
+				<AddedToast
+					key={toast.key}
+					text={toast.text}
+					bottom={insets.bottom + 88}
+					onView={() => {
+						setToast(null);
+						navigation.navigate("Tabs", { screen: "Cart" });
+					}}
+					onHide={() => setToast(null)}
+				/>
+			) : null}
 		</View>
 	);
 }
 
+/** Confirmation d'ajout : glisse au-dessus de la barre d'achat, puis disparaît seule. */
+function AddedToast({ text, bottom, onView, onHide }: { text: string; bottom: number; onView: () => void; onHide: () => void }) {
+	const v = useRef(new Animated.Value(0)).current;
+	useEffect(() => {
+		const reduced = isReducedMotion();
+		const a = Animated.sequence([
+			reduced ? Animated.timing(v, { toValue: 1, duration: 0, useNativeDriver: true }) : Animated.spring(v, { toValue: 1, speed: 16, bounciness: 5, useNativeDriver: true }),
+			Animated.delay(3200),
+			Animated.timing(v, { toValue: 0, duration: reduced ? 0 : 200, easing: EASE, useNativeDriver: true }),
+		]);
+		a.start(({ finished }) => finished && onHide());
+		return () => a.stop();
+	}, []); // eslint-disable-line react-hooks/exhaustive-deps
+	return (
+		<Animated.View
+			style={[
+				styles.toast,
+				{ bottom, opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }] },
+			]}
+		>
+			<Ionicons name="checkmark-circle" size={20} color={colors.taupe} />
+			<View style={{ flex: 1 }}>
+				<Text style={styles.toastTitle}>Ajouté au panier</Text>
+				<Text style={styles.toastText} numberOfLines={1}>
+					{text}
+				</Text>
+			</View>
+			<Pressable onPress={onView} hitSlop={10} accessibilityRole="button">
+				<Text style={styles.toastAction}>Voir</Text>
+			</Pressable>
+		</Animated.View>
+	);
+}
+
 const styles = StyleSheet.create({
+	toast: { position: "absolute", left: space.xl, right: space.xl, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderRadius: radius.lg, backgroundColor: colors.brand, shadowColor: colors.brandDark, shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+	toastTitle: { fontSize: font.label, fontWeight: "700", color: colors.background },
+	toastText: { fontSize: font.small, color: colors.taupe },
+	toastAction: { fontSize: 14, fontWeight: "700", color: colors.background, textDecorationLine: "underline" },
 	dots: { position: "absolute", bottom: 34, left: 0, right: 0, flexDirection: "row", justifyContent: "center", gap: 6 },
 	dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.taupe },
 	dotOn: { width: 18, backgroundColor: colors.brand },

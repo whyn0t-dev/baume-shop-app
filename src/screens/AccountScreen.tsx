@@ -11,6 +11,7 @@ import type { Order } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { useFavorites } from "../store/FavoritesProvider";
 import { Button, Card, EmptyState, IconButton, ListRow, Screen, SectionLabel, Title, TopBar } from "../components/ui";
+import { PressableScale } from "../components/motion";
 import { initials, longDate } from "../lib/format";
 import { colors, font, fonts, radius, space } from "../theme";
 import type { RootStackParamList, TabParamList } from "../navigation/types";
@@ -106,10 +107,10 @@ export default function AccountScreen({ navigation }: Props) {
 
 function Tile({ value, label, onPress }: { value: string; label: string; onPress: () => void }) {
 	return (
-		<Pressable onPress={onPress} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.8 }]}>
+		<PressableScale onPress={onPress} scaleTo={0.95} style={styles.tile} accessibilityRole="button" accessibilityLabel={`${value} ${label}`}>
 			<Text style={styles.tileValue}>{value}</Text>
 			<Text style={styles.tileLabel}>{label}</Text>
-		</Pressable>
+		</PressableScale>
 	);
 }
 

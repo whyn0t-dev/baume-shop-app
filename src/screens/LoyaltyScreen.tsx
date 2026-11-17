@@ -11,7 +11,9 @@ import { convertPoints, fetchLoyalty } from "../api/endpoints";
 import type { Loyalty } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { BaumeLogo } from "../components/BaumeLogo";
-import { Button, Card, EmptyState, ErrorBanner, Loading, Screen, SectionLabel, Title, TopBar } from "../components/ui";
+import { Button, Card, EmptyState, ErrorBanner, Screen, SectionLabel, SkeletonRows, Title, TopBar } from "../components/ui";
+import { FadeIn, ProgressBar, animateLayout, stagger, useCountUp } from "../components/motion";
+import { haptic } from "../lib/haptics";
 import { shortDate } from "../lib/format";
 import { colors, font, fonts, radius, space } from "../theme";
 import type { RootStackParamList, TabParamList } from "../navigation/types";
@@ -29,10 +31,13 @@ export default function LoyaltyScreen({ navigation }: Props) {
 	const [converting, setConverting] = useState<number | null>(null);
 	const [tick, setTick] = useState(0);
 
-	const load = useCallback(async () => {
+	const load = useCallback(async (animate = false) => {
 		if (!user) return;
 		try {
-			setLoyalty(await fetchLoyalty());
+			const data = await fetchLoyalty();
+			// Après la création d'un bon : le nouveau bon et le solde se mettent à jour en douceur.
+			if (animate) animateLayout();
+			setLoyalty(data);
 			setError(null);
 		} catch (e) {
 			setError(errorMessage(e, "Impossible de charger votre carte."));
@@ -46,6 +51,9 @@ export default function LoyaltyScreen({ navigation }: Props) {
 			load();
 		}, [load]),
 	);
+
+	// Solde affiché : compte jusqu'au nombre de points au premier affichage, puis suit les changements.
+	const shownPoints = useCountUp(loyalty?.points ?? null);
 
 	// Le QR change toutes les 5 minutes (comme sur le site).
 	useEffect(() => {
@@ -74,9 +82,11 @@ export default function LoyaltyScreen({ navigation }: Props) {
 					setConverting(points);
 					try {
 						const res = await convertPoints(points);
+						haptic.success();
 						Alert.alert("Bon créé", res?.code ? `Votre code : ${res.code}\nIl s'applique depuis le panier.` : "Votre bon est disponible dans le panier.");
-						load();
+						load(true);
 					} catch (e) {
+						haptic.warning();
 						Alert.alert("Conversion impossible", errorMessage(e));
 					} finally {
 						setConverting(null);
@@ -86,6 +96,7 @@ export default function LoyaltyScreen({ navigation }: Props) {
 		]);
 	}
 
+	const qr = qrValue(user.email, loyalty?.points ?? 0);
 	const name = [user.first_name, user.last_name ? `${user.last_name[0]}.` : ""].filter(Boolean).join(" ") || user.email;
 	const next = loyalty?.next_threshold;
 	const progress = next && loyalty ? Math.min(1, loyalty.points / next.points) : 1;
@@ -99,27 +110,32 @@ export default function LoyaltyScreen({ navigation }: Props) {
 				refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}
 			>
 				<ErrorBanner message={error} onRetry={load} />
+				<FadeIn offset={16}>
 				<View style={styles.card}>
 					<View style={styles.cardHead}>
 						<BaumeLogo width={104} color={colors.background} />
 						<Text style={styles.cardKicker}>Carte membre</Text>
 					</View>
-					<View style={styles.qr} key={tick}>
-						<QRCode value={qrValue(user.email, loyalty?.points ?? 0)} size={168} color={colors.text} backgroundColor={colors.white} />
-					</View>
+					{/* Le QR ne se redessine (en fondu) que lorsque son contenu change réellement. */}
+					<FadeIn key={qr} duration={260} offset={0}>
+						<View style={styles.qr}>
+							<QRCode value={qr} size={168} color={colors.text} backgroundColor={colors.white} />
+						</View>
+					</FadeIn>
 					<Text style={styles.cardHint}>À présenter en caisse à la boutique de Genève</Text>
 					<View style={styles.cardFoot}>
 						<View>
 							<Text style={styles.cardName}>{name}</Text>
 							<Text style={styles.points}>
-								{loyalty ? loyalty.points : "…"} <Text style={styles.pointsUnit}>points</Text>
+								{shownPoints ?? "…"} <Text style={styles.pointsUnit}>points</Text>
 							</Text>
 						</View>
 					</View>
 				</View>
+				</FadeIn>
 
 				{!loyalty ? (
-					<Loading />
+					<SkeletonRows count={2} height={64} />
 				) : (
 					<>
 						<Card style={{ padding: space.lg, gap: 8 }}>
@@ -131,9 +147,7 @@ export default function LoyaltyScreen({ navigation }: Props) {
 											{loyalty.points} / {next.points} pts
 										</Text>
 									</View>
-									<View style={styles.track}>
-										<View style={[styles.fill, { width: `${Math.round(progress * 100)}%` }]} />
-									</View>
+									<ProgressBar progress={progress} />
 								</>
 							) : (
 								<Text style={styles.strong}>Vous avez atteint le palier maximal, bravo !</Text>
@@ -145,15 +159,17 @@ export default function LoyaltyScreen({ navigation }: Props) {
 								<SectionLabel>Échanger mes points</SectionLabel>
 								{loyalty.thresholds
 									.filter((t) => loyalty.points >= t.points)
-									.map((t) => (
-										<Card key={t.points} style={styles.convert}>
+									.map((t, i) => (
+										<FadeIn key={t.points} delay={stagger(i, 60)}>
+										<Card style={styles.convert}>
 											<Ionicons name="gift-outline" size={22} color={colors.brand} />
 											<View style={{ flex: 1 }}>
 												<Text style={styles.strong}>Bon de {t.label}</Text>
 												<Text style={styles.muted}>{t.points} points</Text>
 											</View>
-											<Button title="Créer" small onPress={() => convert(t.points, t.label)} loading={converting === t.points} />
+											<Button title="Créer" small onPress={() => convert(t.points, t.label)} loading={converting === t.points} disabled={converting !== null && converting !== t.points} />
 										</Card>
+										</FadeIn>
 									))}
 							</>
 						) : null}
@@ -218,8 +234,6 @@ const styles = StyleSheet.create({
 	muted: { fontSize: font.small, color: colors.textMuted },
 	body: { fontSize: 14, color: colors.text },
 	code: { fontSize: 14, fontWeight: "700", color: colors.text, letterSpacing: 0.5 },
-	track: { height: 8, borderRadius: 4, backgroundColor: colors.sand },
-	fill: { height: 8, borderRadius: 4, backgroundColor: colors.brand },
 	convert: { flexDirection: "row", alignItems: "center", gap: 12, padding: space.lg },
 	tx: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: space.lg, paddingVertical: 12 },
 	border: { borderTopWidth: 1, borderTopColor: colors.border },

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import type { CompositeScreenProps } from "@react-navigation/native";
@@ -10,7 +10,8 @@ import { fetchCategories, fetchLoyalty, fetchProducts, fetchUnreadCount } from "
 import type { Category, Loyalty, Product } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { BaumeLogo, BaumeMonogram } from "../components/BaumeLogo";
-import { ErrorBanner, IconButton, Loading, ProductCard, Screen, SectionTitle, Title, TopBar } from "../components/ui";
+import { ErrorBanner, IconButton, ProductCard, Screen, SectionTitle, SkeletonProductCard, Title, TopBar } from "../components/ui";
+import { FadeIn, PressableScale, Skeleton, stagger } from "../components/motion";
 import { colors, font, fonts, radius, space } from "../theme";
 import type { RootStackParamList, TabParamList } from "../navigation/types";
 
@@ -75,17 +76,20 @@ export default function HomeScreen({ navigation }: Props) {
 				contentContainerStyle={{ paddingBottom: space.xxl }}
 				refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}
 			>
-				<View style={styles.hero}>
+				<FadeIn style={styles.hero}>
 					<Text style={styles.hello}>{user?.first_name ? `Bonjour ${user.first_name}` : "Bienvenue"}</Text>
 					<Title>Prenez soin de vous, à votre rythme.</Title>
-				</View>
+				</FadeIn>
 
-				<Pressable style={styles.search} onPress={() => navigation.navigate("Search")} accessibilityRole="search">
-					<Ionicons name="search" size={20} color={colors.textMuted} />
-					<Text style={styles.searchText}>Rechercher un produit, un besoin…</Text>
-				</Pressable>
+				<FadeIn delay={60}>
+					<PressableScale scaleTo={0.98} style={styles.search} onPress={() => navigation.navigate("Search")} accessibilityRole="search">
+						<Ionicons name="search" size={20} color={colors.textMuted} />
+						<Text style={styles.searchText}>Rechercher un produit, un besoin…</Text>
+					</PressableScale>
+				</FadeIn>
 
-				<Pressable style={styles.loyalty} onPress={() => navigation.navigate("Tabs", { screen: "Loyalty" })}>
+				<FadeIn delay={120}>
+				<PressableScale scaleTo={0.98} style={styles.loyalty} onPress={() => navigation.navigate("Tabs", { screen: "Loyalty" })}>
 					<BaumeMonogram size={34} color={colors.background} />
 					<View style={{ flex: 1, gap: 2 }}>
 						<Text style={styles.loyaltyKicker}>Carte fidélité</Text>
@@ -96,12 +100,30 @@ export default function HomeScreen({ navigation }: Props) {
 						</Text>
 					</View>
 					<Ionicons name="chevron-forward" size={20} color={colors.taupe} />
-				</Pressable>
+				</PressableScale>
+				</FadeIn>
 
 				<ErrorBanner message={error} onRetry={load} />
 
 				{loading ? (
-					<Loading label="Chargement de la boutique…" />
+					// Squelette au gabarit exact des sections à venir.
+					<View accessibilityLabel="Chargement de la boutique">
+						<View style={styles.section}>
+							<Skeleton height={22} width={120} />
+						</View>
+						<View style={[styles.hscroll, { flexDirection: "row" }]}>
+							{[0, 1, 2].map((i) => (
+								<Skeleton key={i} width={132} height={100} radius={radius.lg} />
+							))}
+						</View>
+						<View style={styles.section}>
+							<Skeleton height={22} width={140} />
+						</View>
+						<View style={[styles.hscroll, { flexDirection: "row", gap: 14 }]}>
+							<SkeletonProductCard width={165} />
+							<SkeletonProductCard width={165} />
+						</View>
+					</View>
 				) : (
 					<>
 						<View style={styles.section}>
@@ -111,16 +133,20 @@ export default function HomeScreen({ navigation }: Props) {
 						</View>
 						<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hscroll}>
 							{needs.slice(0, 8).map((n, i) => (
-								<Pressable
-									key={n.slug}
+								<FadeIn key={n.slug} delay={stagger(i)} axis="x" offset={16}>
+								<PressableScale
+									scaleTo={0.96}
 									onPress={() => navigation.navigate("Category", { kind: "besoin", slug: n.slug, name: n.name })}
 									style={[styles.need, i === 0 && styles.needFirst]}
 								>
 									<Text style={[styles.needName, i === 0 && { color: colors.background }]} numberOfLines={3}>
 										{n.name}
 									</Text>
-									<Text style={[styles.needCount, i === 0 && { color: colors.taupe }]}>{counts[n.slug]} produits</Text>
-								</Pressable>
+									<Text style={[styles.needCount, i === 0 && { color: colors.taupe }]}>
+										{counts[n.slug]} produit{counts[n.slug] > 1 ? "s" : ""}
+									</Text>
+								</PressableScale>
+								</FadeIn>
 							))}
 						</ScrollView>
 
@@ -130,8 +156,10 @@ export default function HomeScreen({ navigation }: Props) {
 							</SectionTitle>
 						</View>
 						<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.hscroll, { gap: 14 }]}>
-							{news.map((p) => (
-								<ProductCard key={p.id} product={p} width={165} onPress={() => navigation.navigate("Product", { slug: p.slug, product: p })} />
+							{news.map((p, i) => (
+								<FadeIn key={p.id} delay={120 + stagger(i, 60, 4)} axis="x" offset={16}>
+									<ProductCard product={p} width={165} onPress={() => navigation.navigate("Product", { slug: p.slug, product: p })} />
+								</FadeIn>
 							))}
 						</ScrollView>
 					</>

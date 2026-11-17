@@ -1,10 +1,14 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
+import { Animated, View } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../theme";
 import { useAuth } from "../auth/AuthProvider";
 import { useCart } from "../store/CartProvider";
+import { CountBadge } from "../components/ui";
+import { isReducedMotion } from "../components/motion";
+import { haptic } from "../lib/haptics";
 import type { RootStackParamList, TabParamList } from "./types";
 import HomeScreen from "../screens/HomeScreen";
 import ShopScreen from "../screens/ShopScreen";
@@ -38,6 +42,29 @@ const TAB_ICONS: Record<keyof TabParamList, [React.ComponentProps<typeof Ionicon
 	Account: ["person", "person-outline"],
 };
 
+/** Icône d'onglet : léger rebond quand l'onglet devient actif. */
+function TabIcon({ name, focused, color, size, badge }: { name: keyof TabParamList; focused: boolean; color: string; size: number; badge?: number }) {
+	const s = useRef(new Animated.Value(1)).current;
+	const first = useRef(true);
+	useEffect(() => {
+		if (first.current) {
+			first.current = false;
+			return;
+		}
+		if (!focused || isReducedMotion()) return;
+		s.setValue(0.82);
+		Animated.spring(s, { toValue: 1, speed: 18, bounciness: 10, useNativeDriver: true }).start();
+	}, [focused]); // eslint-disable-line react-hooks/exhaustive-deps
+	return (
+		<View>
+			<Animated.View style={{ transform: [{ scale: s }] }}>
+				<Ionicons name={TAB_ICONS[name][focused ? 0 : 1]} size={size} color={color} />
+			</Animated.View>
+			{badge ? <CountBadge count={badge} style={{ top: -4, right: -10 }} /> : null}
+		</View>
+	);
+}
+
 function Tabs() {
 	const cart = useCart();
 	return (
@@ -48,15 +75,20 @@ function Tabs() {
 				tabBarInactiveTintColor: colors.textMuted,
 				tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
 				tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-				tabBarIcon: ({ focused, color, size }) => <Ionicons name={TAB_ICONS[route.name][focused ? 0 : 1]} size={size} color={color} />,
+				// Changement d'onglet en fondu court, comme sur iOS.
+				animation: "fade",
+				tabBarIcon: ({ focused, color, size }) => (
+					<TabIcon name={route.name} focused={focused} color={color} size={size} badge={route.name === "Cart" ? cart.count : undefined} />
+				),
 			})}
+			screenListeners={{ tabPress: () => haptic.selection() }}
 		>
 			<Tab.Screen name="Home" component={HomeScreen} options={{ title: "Accueil" }} />
 			<Tab.Screen name="Shop" component={ShopScreen} options={{ title: "Shop" }} />
 			<Tab.Screen
 				name="Cart"
 				component={CartScreen}
-				options={{ title: "Panier", tabBarBadge: cart.count || undefined, tabBarBadgeStyle: { backgroundColor: colors.brand, fontSize: 10 } }}
+				options={{ title: "Panier", tabBarAccessibilityLabel: cart.count ? `Panier, ${cart.count} article${cart.count > 1 ? "s" : ""}` : "Panier" }}
 			/>
 			<Tab.Screen name="Loyalty" component={LoyaltyScreen} options={{ title: "Fidélité" }} />
 			<Tab.Screen name="Account" component={AccountScreen} options={{ title: "Compte" }} />
@@ -70,17 +102,17 @@ export default function RootNavigator() {
 	return (
 		<Stack.Navigator
 			initialRouteName={showWelcome ? "Welcome" : "Tabs"}
-			screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}
+			screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "slide_from_right" }}
 		>
-			<Stack.Screen name="Tabs" component={Tabs} />
-			<Stack.Screen name="Welcome" component={WelcomeScreen} options={{ animation: "fade", gestureEnabled: false }} />
+			<Stack.Screen name="Tabs" component={Tabs} options={{ animation: "fade" }} />
+			<Stack.Screen name="Welcome" component={WelcomeScreen} options={{ animation: "fade", animationDuration: 350, gestureEnabled: false }} />
 			<Stack.Screen name="Login" component={LoginScreen} options={{ presentation: "modal" }} />
 			<Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
 			<Stack.Screen name="Category" component={CategoryScreen} />
 			<Stack.Screen name="Product" component={ProductScreen} />
-			<Stack.Screen name="Search" component={SearchScreen} options={{ animation: "fade" }} />
+			<Stack.Screen name="Search" component={SearchScreen} options={{ animation: "fade", animationDuration: 200 }} />
 			<Stack.Screen name="Checkout" component={CheckoutScreen} />
-			<Stack.Screen name="Confirmation" component={ConfirmationScreen} options={{ gestureEnabled: false }} />
+			<Stack.Screen name="Confirmation" component={ConfirmationScreen} options={{ animation: "fade", animationDuration: 300, gestureEnabled: false }} />
 			<Stack.Screen name="Orders" component={OrdersScreen} />
 			<Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
 			<Stack.Screen name="ReturnRequest" component={ReturnRequestScreen} />

@@ -3,6 +3,7 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import { errorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import { Button, Field, IconButton, Screen, Segmented, Title, TopBar } from "../components/ui";
+import { animateLayout } from "../components/motion";
 import { colors, font, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
 
@@ -52,6 +53,8 @@ export default function LoginScreen({ navigation, route }: RootScreenProps<"Logi
 					<Segmented
 						value={mode}
 						onChange={(m) => {
+							// Les champs propres à l'inscription apparaissent / disparaissent en douceur.
+							animateLayout();
 							setMode(m);
 							setError(null);
 						}}

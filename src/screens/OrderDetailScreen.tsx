@@ -5,7 +5,9 @@ import { errorMessage } from "../api/client";
 import { fetchOrder, fetchProduct, fetchProducts } from "../api/endpoints";
 import type { Order } from "../api/types";
 import { useCart } from "../store/CartProvider";
-import { Badge, Button, Card, ErrorBanner, IconButton, Loading, Screen, Title, TopBar, TotalRow } from "../components/ui";
+import { Badge, Button, Card, ErrorBanner, IconButton, Screen, SkeletonRows, Title, TopBar, TotalRow } from "../components/ui";
+import { FadeIn } from "../components/motion";
+import { haptic } from "../lib/haptics";
 import { longDate, money, num, orderLabel, orderStatus } from "../lib/format";
 import { colors, font, radius, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
@@ -25,8 +27,9 @@ export function OrderSteps({ order }: { order: Order }) {
 		<View>
 			{STEPS.map((s, i) => {
 				const done = i <= rank;
+				// Les étapes franchies s'allument l'une après l'autre jusqu'au statut actuel.
 				return (
-					<View key={s.key} style={{ flexDirection: "row", gap: 12 }}>
+					<FadeIn key={s.key} delay={i * 90} offset={6} style={{ flexDirection: "row", gap: 12 }}>
 						<View style={{ alignItems: "center" }}>
 							<View style={[styles.stepDot, done && { backgroundColor: colors.brand, borderColor: colors.brand }]}>
 								{done ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
@@ -34,7 +37,7 @@ export function OrderSteps({ order }: { order: Order }) {
 							{i < STEPS.length - 1 ? <View style={[styles.stepLine, i < rank && { backgroundColor: colors.brand }]} /> : null}
 						</View>
 						<Text style={[styles.stepLabel, done && { color: colors.text, fontWeight: "600" }]}>{s.label}</Text>
-					</View>
+					</FadeIn>
 				);
 			})}
 		</View>
@@ -65,7 +68,11 @@ export default function OrderDetailScreen({ navigation, route }: RootScreenProps
 			<Screen>
 				<TopBar left={<IconButton icon="chevron-back" label="Retour" onPress={() => navigation.goBack()} />} />
 				<ErrorBanner message={error} onRetry={load} />
-				{!error ? <Loading /> : null}
+				{!error ? (
+					<View style={{ paddingHorizontal: space.xl }}>
+						<SkeletonRows count={3} height={90} />
+					</View>
+				) : null}
 			</Screen>
 		);
 	}
@@ -90,8 +97,13 @@ export default function OrderDetailScreen({ navigation, route }: RootScreenProps
 			} catch {}
 		}
 		setReordering(false);
-		if (added) navigation.navigate("Tabs", { screen: "Cart" });
-		else Alert.alert("Indisponible", "Ces articles ne sont plus disponibles à la vente.");
+		if (added) {
+			haptic.success();
+			navigation.navigate("Tabs", { screen: "Cart" });
+		} else {
+			haptic.warning();
+			Alert.alert("Indisponible", "Ces articles ne sont plus disponibles à la vente.");
+		}
 	}
 
 	return (

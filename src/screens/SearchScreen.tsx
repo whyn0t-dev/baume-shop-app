@@ -6,7 +6,8 @@ import * as WebBrowser from "expo-web-browser";
 import { SITE_URL } from "../api/client";
 import { fetchCategories, fetchProducts } from "../api/endpoints";
 import type { Category, Product } from "../api/types";
-import { Button, EmptyState, Loading, ProductImage, Screen, SectionLabel } from "../components/ui";
+import { Button, EmptyState, ProductImage, Screen, SectionLabel } from "../components/ui";
+import { FadeIn, Skeleton, animateLayout, stagger } from "../components/motion";
 import { normalize, price, productName } from "../lib/format";
 import { colors, font, radius, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
@@ -88,7 +89,17 @@ export default function SearchScreen({ navigation }: RootScreenProps<"Search">) 
 
 			{q.length >= 2 ? (
 				products === null ? (
-					<Loading />
+					<View style={{ paddingHorizontal: space.xl, gap: 14, paddingTop: space.sm }}>
+						{[0, 1, 2].map((i) => (
+							<View key={i} style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+								<Skeleton width={50} height={56} radius={10} />
+								<View style={{ flex: 1, gap: 8 }}>
+									<Skeleton height={14} width="70%" />
+									<Skeleton height={12} width="40%" />
+								</View>
+							</View>
+						))}
+					</View>
 				) : results.length ? (
 					<FlatList
 						data={results}
@@ -97,7 +108,8 @@ export default function SearchScreen({ navigation }: RootScreenProps<"Search">) 
 						contentContainerStyle={{ paddingHorizontal: space.xl, paddingBottom: space.xxl }}
 						ListHeaderComponent={<Text style={[styles.count]}>{results.length} résultat{results.length > 1 ? "s" : ""}</Text>}
 						renderItem={({ item, index }) => (
-							<Pressable onPress={() => open(item)} style={[styles.row, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+							<FadeIn delay={stagger(index, 30, 8)} offset={6} duration={240}>
+							<Pressable onPress={() => open(item)} style={({ pressed }) => [styles.row, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }, pressed && { opacity: 0.6 }]}>
 								<ProductImage uri={item.image} height={56} radius={10} style={{ width: 50 }} />
 								<View style={{ flex: 1 }}>
 									<Text style={styles.name} numberOfLines={1}>
@@ -110,6 +122,7 @@ export default function SearchScreen({ navigation }: RootScreenProps<"Search">) 
 								</View>
 								<Ionicons name="chevron-forward" size={16} color={colors.taupeWarm} />
 							</Pressable>
+							</FadeIn>
 						)}
 					/>
 				) : (
@@ -125,6 +138,7 @@ export default function SearchScreen({ navigation }: RootScreenProps<"Search">) 
 								right={
 									<Pressable
 										onPress={() => {
+											animateLayout();
 											setRecent([]);
 											AsyncStorage.removeItem(RECENT_KEY).catch(() => {});
 										}}

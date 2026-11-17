@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import type { CompositeScreenProps } from "@react-navigation/native";
@@ -7,7 +7,8 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { errorMessage } from "../api/client";
 import { fetchCategories, fetchProducts } from "../api/endpoints";
 import type { Category } from "../api/types";
-import { ErrorBanner, IconButton, Loading, Screen, Segmented, Title, TopBar } from "../components/ui";
+import { ErrorBanner, IconButton, Screen, Segmented, SkeletonTiles, Title, TopBar } from "../components/ui";
+import { FadeIn, PressableScale, stagger } from "../components/motion";
 import { colors, font, fonts, radius, space } from "../theme";
 import type { RootStackParamList, TabParamList } from "../navigation/types";
 
@@ -65,15 +66,19 @@ export default function ShopScreen({ navigation, route }: Props) {
 						{ key: "produit", label: "Par produit" },
 					]}
 				/>
-				<Text style={styles.intro}>
-					{mode === "besoin"
-						? "Choisissez ce qui vous concerne : nos expertes ont sélectionné les produits adaptés."
-						: "Toutes nos collections, des protections menstruelles aux coffrets cadeaux."}
-				</Text>
+				<FadeIn key={mode} offset={4} duration={260}>
+					<Text style={styles.intro}>
+						{mode === "besoin"
+							? "Choisissez ce qui vous concerne : nos expertes ont sélectionné les produits adaptés."
+							: "Toutes nos collections, des protections menstruelles aux coffrets cadeaux."}
+					</Text>
+				</FadeIn>
 			</View>
 			<ErrorBanner message={error} onRetry={load} />
 			{loading ? (
-				<Loading />
+				<View style={{ padding: space.xl, paddingTop: space.md }}>
+					<SkeletonTiles count={6} />
+				</View>
 			) : (
 				<FlatList
 					data={data}
@@ -83,11 +88,14 @@ export default function ShopScreen({ navigation, route }: Props) {
 					columnWrapperStyle={{ gap: 10 }}
 					contentContainerStyle={{ padding: space.xl, paddingTop: space.md, gap: 10 }}
 					refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}
-					renderItem={({ item }) => {
+					renderItem={({ item, index }) => {
 						const n = counts[`${mode}:${item.slug}`] || 0;
+						// La liste est recréée à chaque changement de mode : les tuiles réapparaissent en cascade.
 						return (
-							<Pressable
-								style={({ pressed }) => [styles.card, pressed && { opacity: 0.8 }]}
+							<FadeIn delay={stagger(index, 35, 10)} style={{ flex: 1 }}>
+							<PressableScale
+								scaleTo={0.96}
+								style={styles.card}
 								onPress={() => navigation.navigate("Category", { kind: mode, slug: item.slug, name: item.name })}
 							>
 								<Text style={styles.name} numberOfLines={3}>
@@ -99,7 +107,8 @@ export default function ShopScreen({ navigation, route }: Props) {
 									</Text>
 									<Ionicons name="chevron-forward" size={16} color={colors.taupeWarm} />
 								</View>
-							</Pressable>
+							</PressableScale>
+							</FadeIn>
 						);
 					}}
 				/>

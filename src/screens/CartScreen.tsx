@@ -10,6 +10,8 @@ import type { LoyaltyCode } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { useCart } from "../store/CartProvider";
 import { Button, Card, EmptyState, ProductImage, Screen, Title, TopBar, TotalRow } from "../components/ui";
+import { FadeIn, PressableScale, ProgressBar, animateLayout, stagger } from "../components/motion";
+import { haptic } from "../lib/haptics";
 import { money, num } from "../lib/format";
 import { SHIPPING, colors, font, radius, space } from "../theme";
 import type { RootStackParamList, TabParamList } from "../navigation/types";
@@ -36,9 +38,12 @@ export default function CartScreen({ navigation }: Props) {
 		setChecking(true);
 		try {
 			const d = await fetchDiscount(value);
+			haptic.success();
+			animateLayout();
 			cart.setDiscount({ code: d.code, type: d.type, value: num(d.value), min: num(d.min_order_amount), label });
 			setCode("");
 		} catch (e) {
+			haptic.warning();
 			Alert.alert("Code non valable", errorMessage(e, "Ce code promo n'est pas valable."));
 		} finally {
 			setChecking(false);
@@ -57,6 +62,15 @@ export default function CartScreen({ navigation }: Props) {
 		);
 	}
 
+	// Quantité : la ligne disparaît en douceur quand on retire le dernier exemplaire.
+	function changeQty(key: string, next: number) {
+		if (next <= 0) {
+			haptic.light();
+			animateLayout(260);
+		} else haptic.selection();
+		cart.setQuantity(key, next);
+	}
+
 	const after = cart.subtotal - cart.discountAmount;
 	const shipping = after >= SHIPPING.CH.threshold ? 0 : SHIPPING.CH.fee;
 	const missing = SHIPPING.CH.threshold - after;
@@ -66,11 +80,12 @@ export default function CartScreen({ navigation }: Props) {
 		<Screen>
 			<TopBar left={<Title size={26}>Panier</Title>} right={<Text style={styles.muted}>{cart.count} article{cart.count > 1 ? "s" : ""}</Text>} />
 			<ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-				{cart.lines.map((l) => (
-					<Card key={l.key} style={styles.line}>
-						<Pressable onPress={() => navigation.navigate("Product", { slug: l.slug })} style={{ width: 64 }}>
+				{cart.lines.map((l, i) => (
+					<FadeIn key={l.key} delay={stagger(i, 50, 6)}>
+					<Card style={styles.line}>
+						<PressableScale onPress={() => navigation.navigate("Product", { slug: l.slug })} style={{ width: 64 }} scaleTo={0.94}>
 							<ProductImage uri={l.image} height={72} radius={12} />
-						</Pressable>
+						</PressableScale>
 						<View style={{ flex: 1, gap: 2 }}>
 							<Text style={styles.name} numberOfLines={2}>
 								{l.name}
@@ -81,15 +96,16 @@ export default function CartScreen({ navigation }: Props) {
 							<Text style={styles.price}>{money(l.price * l.quantity)}</Text>
 						</View>
 						<View style={styles.stepper}>
-							<Pressable onPress={() => cart.setQuantity(l.key, l.quantity - 1)} style={styles.stepBtn} accessibilityLabel={l.quantity === 1 ? "Retirer l'article" : "Diminuer"}>
+							<Pressable onPress={() => changeQty(l.key, l.quantity - 1)} style={styles.stepBtn} accessibilityLabel={l.quantity === 1 ? "Retirer l'article" : "Diminuer"}>
 								<Ionicons name={l.quantity === 1 ? "trash-outline" : "remove"} size={15} color={colors.text} />
 							</Pressable>
 							<Text style={styles.qty}>{l.quantity}</Text>
-							<Pressable onPress={() => cart.setQuantity(l.key, l.quantity + 1)} style={styles.stepBtn} accessibilityLabel="Augmenter">
+							<Pressable onPress={() => changeQty(l.key, l.quantity + 1)} disabled={l.quantity >= 20} style={[styles.stepBtn, l.quantity >= 20 && { opacity: 0.35 }]} accessibilityLabel="Augmenter">
 								<Ionicons name="add" size={15} color={colors.text} />
 							</Pressable>
 						</View>
 					</Card>
+					</FadeIn>
 				))}
 
 				{cart.discount ? (
@@ -101,18 +117,24 @@ export default function CartScreen({ navigation }: Props) {
 								{cart.subtotal < cart.discount.min ? `Valable dès ${money(cart.discount.min)} d'achat` : `− ${money(cart.discountAmount)} (estimation)`}
 							</Text>
 						</View>
-						<Pressable onPress={() => cart.setDiscount(null)} hitSlop={8}>
+						<Pressable
+							onPress={() => {
+								animateLayout();
+								cart.setDiscount(null);
+							}}
+							hitSlop={8}
+						>
 							<Text style={styles.link}>Retirer</Text>
 						</Pressable>
 					</View>
 				) : (
 					<>
 						{vouchers.map((v) => (
-							<Pressable key={v.code} style={styles.voucher} onPress={() => applyCode(v.code, `Bon fidélité ${v.reward ? `de ${v.reward} CHF` : ""}`.trim())}>
+							<PressableScale key={v.code} scaleTo={0.98} disabled={checking} style={styles.voucher} onPress={() => applyCode(v.code, `Bon fidélité ${v.reward ? `de ${v.reward} CHF` : ""}`.trim())}>
 								<Ionicons name="gift-outline" size={20} color={colors.brand} />
 								<Text style={[styles.name, { flex: 1 }]}>Utiliser mon bon fidélité{v.reward ? ` de ${v.reward} CHF` : ""}</Text>
 								<Text style={styles.link}>Appliquer</Text>
-							</Pressable>
+							</PressableScale>
 						))}
 						<View style={styles.codeRow}>
 							<TextInput
@@ -136,9 +158,18 @@ export default function CartScreen({ navigation }: Props) {
 					<TotalRow label="Livraison (Suisse)" value={shipping ? money(shipping) : "Offerte"} />
 					<View style={{ height: 1, backgroundColor: colors.border }} />
 					<TotalRow label="Total estimé" value={money(total)} strong />
+					{/* Jauge vers la livraison offerte : elle suit le montant du panier. */}
 					{missing > 0 ? (
-						<Text style={styles.muted}>Plus que {money(missing)} pour la livraison offerte en Suisse.</Text>
-					) : null}
+						<View style={{ gap: 6, marginTop: 2 }}>
+							<ProgressBar progress={after / SHIPPING.CH.threshold} height={6} color={colors.taupeWarm} />
+							<Text style={styles.muted}>Plus que {money(missing)} pour la livraison offerte en Suisse.</Text>
+						</View>
+					) : (
+						<View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+							<Ionicons name="checkmark-circle" size={16} color={colors.success} />
+							<Text style={[styles.muted, { color: colors.success }]}>Livraison offerte en Suisse</Text>
+						</View>
+					)}
 					<Text style={styles.muted}>{user ? `+${Math.floor(after)} points fidélité avec cette commande` : "Connectez-vous pour gagner des points fidélité."}</Text>
 				</Card>
 			</ScrollView>

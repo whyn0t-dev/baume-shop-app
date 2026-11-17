@@ -1,11 +1,12 @@
 import React, { useCallback, useState } from "react";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { errorMessage } from "../api/client";
 import { fetchMyOrders } from "../api/endpoints";
 import type { Order } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
-import { Badge, Button, Card, EmptyState, ErrorBanner, IconButton, Loading, Screen, SectionLabel, Title, TopBar } from "../components/ui";
+import { Badge, Button, Card, EmptyState, ErrorBanner, IconButton, Screen, SectionLabel, SkeletonRows, Title, TopBar } from "../components/ui";
+import { FadeIn, PressableScale, stagger } from "../components/motion";
 import { money, orderLabel, orderStatus, shortDate } from "../lib/format";
 import { colors, font, space } from "../theme";
 import type { RootScreenProps } from "../navigation/types";
@@ -57,9 +58,10 @@ export default function OrdersScreen({ navigation }: RootScreenProps<"Orders">) 
 						<View style={{ gap: 12, marginBottom: 4 }}>
 							<Title size={26}>Mes commandes</Title>
 							<ErrorBanner message={error} onRetry={load} />
-							{orders === null && !error ? <Loading /> : null}
-							{active.map((o) => (
-								<Pressable key={o.id} onPress={() => navigation.navigate("OrderDetail", { orderId: o.id })}>
+							{orders === null && !error ? <SkeletonRows count={3} /> : null}
+							{active.map((o, i) => (
+								<FadeIn key={o.id} delay={stagger(i, 60)}>
+								<PressableScale scaleTo={0.98} onPress={() => navigation.navigate("OrderDetail", { orderId: o.id })}>
 									<Card style={{ padding: space.lg, gap: 14 }}>
 										<View style={styles.between}>
 											<View style={{ gap: 2, flex: 1 }}>
@@ -72,7 +74,8 @@ export default function OrdersScreen({ navigation }: RootScreenProps<"Orders">) 
 										</View>
 										<OrderSteps order={o} />
 									</Card>
-								</Pressable>
+								</PressableScale>
+								</FadeIn>
 							))}
 							{past.length ? <SectionLabel>Historique</SectionLabel> : null}
 						</View>
@@ -84,8 +87,9 @@ export default function OrdersScreen({ navigation }: RootScreenProps<"Orders">) 
 							</EmptyState>
 						) : undefined
 					}
-					renderItem={({ item }) => (
-						<Pressable onPress={() => navigation.navigate("OrderDetail", { orderId: item.id })}>
+					renderItem={({ item, index }) => (
+						<FadeIn delay={stagger(index + active.length, 50)}>
+						<PressableScale scaleTo={0.98} onPress={() => navigation.navigate("OrderDetail", { orderId: item.id })}>
 							<Card style={styles.row}>
 								<View style={{ flex: 1, gap: 4 }}>
 									<Text style={styles.strong}>Commande {orderLabel(item)}</Text>
@@ -98,7 +102,8 @@ export default function OrdersScreen({ navigation }: RootScreenProps<"Orders">) 
 									<Badge label={orderStatus(item.status).label} tone={orderStatus(item.status).tone} />
 								</View>
 							</Card>
-						</Pressable>
+						</PressableScale>
+						</FadeIn>
 					)}
 				/>
 			)}
