@@ -92,6 +92,12 @@ export async function forgotPassword(email: string) {
 	await api.post("/auth/forgot-password", { email });
 }
 
+// Suppression définitive du compte (données personnelles effacées, commandes conservées sans lien).
+export async function deleteMyAccount() {
+	const res = await api.post("/auth/account/delete", { confirm: "SUPPRIMER" });
+	return res.data as { deleted: boolean };
+}
+
 export async function fetchMe() {
 	const res = await api.get("/me");
 	return res.data as User;

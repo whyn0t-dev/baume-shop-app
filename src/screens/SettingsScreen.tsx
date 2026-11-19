@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as WebBrowser from "expo-web-browser";
-import { SITE_URL } from "../api/client";
+import { SITE_URL, errorMessage } from "../api/client";
+import { deleteMyAccount } from "../api/endpoints";
 import { useAuth } from "../auth/AuthProvider";
 import { Button, Card, IconButton, ListRow, Screen, SectionLabel, Title, ToggleRow, TopBar } from "../components/ui";
 import { colors, font, space } from "../theme";
@@ -35,25 +36,32 @@ export default function SettingsScreen({ navigation }: RootScreenProps<"Settings
 		]);
 	}
 
+	const [deleting, setDeleting] = useState(false);
+
 	function deleteAccount() {
-		// Apple exige de pouvoir demander la suppression du compte depuis l'app.
+		// Exigence Apple : la suppression se fait entièrement depuis l'app.
 		Alert.alert(
-			"Supprimer mon compte",
-			"Votre demande sera envoyée à l'équipe Baume, qui supprimera votre compte et vos données personnelles sous 30 jours (les factures sont conservées selon la loi).",
+			"Supprimer mon compte ?",
+			"Cette action est définitive. Votre compte, vos points fidélité, vos adresses et vos messages seront supprimés. Vos commandes passées sont conservées pour la comptabilité, sans lien avec vous.",
 			[
 				{ text: "Annuler", style: "cancel" },
-				{
-					text: "Envoyer la demande",
-					style: "destructive",
-					onPress: () =>
-						Linking.openURL(
-							`mailto:contact@baumeshop-v2.weblax.fr?subject=${encodeURIComponent("Suppression de mon compte Baume")}&body=${encodeURIComponent(
-								`Bonjour,\n\nJe souhaite la suppression de mon compte Baume et de mes données personnelles.\nE-mail du compte : ${user?.email || ""}\n\nMerci.`,
-							)}`,
-						),
-				},
+				{ text: "Supprimer définitivement", style: "destructive", onPress: confirmDelete },
 			],
 		);
+	}
+
+	async function confirmDelete() {
+		setDeleting(true);
+		try {
+			await deleteMyAccount();
+			await signOut();
+			Alert.alert("Compte supprimé", "Votre compte Baume a bien été supprimé.");
+			navigation.popToTop();
+		} catch (e) {
+			Alert.alert("Suppression impossible", errorMessage(e, "Réessayez dans un instant."));
+		} finally {
+			setDeleting(false);
+		}
 	}
 
 	return (
@@ -89,7 +97,7 @@ export default function SettingsScreen({ navigation }: RootScreenProps<"Settings
 				{user ? (
 					<>
 						<Button title="Se déconnecter" icon="log-out-outline" variant="secondary" onPress={logout} style={{ marginTop: space.md }} />
-						<Button title="Supprimer mon compte" icon="trash-outline" variant="danger" onPress={deleteAccount} />
+						<Button title="Supprimer mon compte" icon="trash-outline" variant="danger" onPress={deleteAccount} loading={deleting} disabled={deleting} />
 					</>
 				) : null}
 				<Text style={styles.version}>Baume Shop · version {Constants.expoConfig?.version || "1.0.0"}</Text>
